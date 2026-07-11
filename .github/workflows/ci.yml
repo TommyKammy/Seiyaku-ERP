@@ -33,7 +33,8 @@ jobs:
             LICENSE \
             .gitignore \
             .github/ISSUE_TEMPLATE/work-package.yml \
-            .github/ISSUE_TEMPLATE/config.yml; do
+            .github/ISSUE_TEMPLATE/config.yml \
+            .github/pull_request_template.md; do
             if [[ ! -s "${required_file}" ]]; then
               echo "::error file=${required_file}::Required file is missing or empty."
               exit 1
@@ -50,7 +51,7 @@ jobs:
           empty_tree="$(git hash-object -t tree /dev/null)"
           git diff --check "${empty_tree}" HEAD
 
-      - name: Validate issue templates
+      - name: Validate GitHub templates
         shell: bash
         run: |
           set -euo pipefail
@@ -70,6 +71,7 @@ jobs:
             .github/ISSUE_TEMPLATE/config.yml
 
           "${validator_env}/bin/python" <<'PYTHON'
+          import re
           import sys
 
           from ruamel.yaml import YAML
@@ -86,6 +88,8 @@ jobs:
               form = yaml.load(stream)
           with open(".github/ISSUE_TEMPLATE/config.yml", encoding="utf-8") as stream:
               config = yaml.load(stream)
+          with open(".github/pull_request_template.md", encoding="utf-8") as stream:
+              pull_request_template = stream.read()
 
           expected = [
               ("wp_id", "input", "Work Package ID"),
@@ -153,5 +157,58 @@ jobs:
               "CSV impact must require an explicit canonical selection",
           )
 
+          required_pr_lines = [
+              "## Work Package",
+              "- Work Package ID: `WP-...`",
+              "- 関連Issue: #",
+              "- Vault正本ステータス: `draft`",
+              "- 実行準備状態: `blocked | ready`",
+              "## 変更概要",
+              "## 対象範囲",
+              "## トレーサビリティ",
+              "- 要求ID:",
+              "- 設計ID:",
+              "- Test Case ID:",
+              "- Evidence ID:",
+              "- RTM更新対象:",
+              "## 検証",
+              "## CSV / GxP影響",
+              "- CSV影響: `High | Medium | Low`",
+              "## チェックリスト",
+              "- [ ] 変更は上記Work Packageと対象範囲に限定している",
+              "- [ ] ERPNext / Frappe本体を直接改変していない（例外は承認済みADRを記載した）",
+              "- [ ] 受入条件と実施したテストの対応を確認した",
+              "- [ ] Test Case IDとテスト結果を記載した",
+              "- [ ] Evidence IDと保存先を記載した",
+              "- [ ] RTMを更新した、または更新不要の理由を記載した",
+              "- [ ] CSV / GxP、Fixture、Patch、Migration、運用・規制文書への影響を確認した",
+              "- [ ] 必要なレビュー / 承認を記録し、未解決のCritical / High指摘がない",
+          ]
+          visible_pr_template = re.sub(
+              r"<!--.*?-->", "", pull_request_template, flags=re.DOTALL
+          )
+          template_lines = visible_pr_template.splitlines()
+          require(
+              "<!--" not in visible_pr_template and "-->" not in visible_pr_template,
+              "Pull request template HTML comments must be balanced",
+          )
+          require(
+              all(
+                  not line.lstrip().startswith(("```", "~~~"))
+                  for line in template_lines
+              ),
+              "Pull request template must not contain fenced code blocks",
+          )
+          require(
+              all(template_lines.count(line) == 1 for line in required_pr_lines),
+              "Pull request template must contain each required visible line exactly once",
+          )
+          marker_positions = [template_lines.index(line) for line in required_pr_lines]
+          require(
+              marker_positions == sorted(marker_positions),
+              "Pull request template required lines must remain in canonical order",
+          )
+
           print(f"Validated {len(fields)} required Work Package fields.")
+          print(f"Validated {len(required_pr_lines)} pull request lines.")
           PYTHON
