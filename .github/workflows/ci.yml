@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Validate repository baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for required_file in README.md LICENSE .gitignore; do
+            if [[ ! -s "${required_file}" ]]; then
+              echo "::error file=${required_file}::Required file is missing or empty."
+              exit 1
+            fi
+          done
+
+          ignored_tracked="$(git ls-files --cached --ignored --exclude-standard)"
+          if [[ -n "${ignored_tracked}" ]]; then
+            echo "::error::.gitignore matches tracked files:"
+            printf '%s\n' "${ignored_tracked}"
+            exit 1
+          fi
+
+          empty_tree="$(git hash-object -t tree /dev/null)"
+          git diff --check "${empty_tree}" HEAD
