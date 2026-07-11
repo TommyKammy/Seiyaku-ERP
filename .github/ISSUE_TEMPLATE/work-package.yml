@@ -1,0 +1,209 @@
+name: Work Package
+description: Vault正本のWork Packageを1件の親Issueとして起票します
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 起票ルール
+
+        - 1 Work Package = 1 親Issueです。
+        - VaultのWP正本を参照し、未確定事項は削除せずTBDまたは未承認と明記してください。
+        - 要求IDまたは受入条件が未承認、レビュー担当者が未アサイン、依存関係が未解消の場合、実行準備状態はblockedとしてください。
+        - IssueタイトルにはWP IDと正本のタイトルを含めてください。
+
+  - type: input
+    id: wp_id
+    attributes:
+      label: Work Package ID
+      description: Vault正本のWP IDを記載してください。
+      placeholder: WP-P0-GOV-001
+    validations:
+      required: true
+
+  - type: input
+    id: vault_status
+    attributes:
+      label: Vault正本ステータス
+      description: WP frontmatterのstatusをそのまま記載してください。
+      placeholder: draft
+    validations:
+      required: true
+
+  - type: dropdown
+    id: readiness
+    attributes:
+      label: 実行準備状態
+      description: 未承認、未アサイン、未解消の依存関係がある場合はblockedを選択してください。
+      options:
+        - blocked
+        - ready
+    validations:
+      required: true
+
+  - type: input
+    id: reviewers
+    attributes:
+      label: レビュー担当者
+      description: GitHubユーザー名または役割を記載してください。未定の場合は未アサインと記載してください。
+      placeholder: 未アサイン
+    validations:
+      required: true
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: 現在のブロッカー
+      description: 未承認事項、未アサインのレビュー担当者、未解消の依存関係を記載してください。ない場合は「なし」と記載してください。
+      placeholder: |
+        - 要求IDまたは受入条件が未承認
+        - レビュー担当者が未アサイン
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: WPで達成する目的を記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirement_ids
+    attributes:
+      label: 要求ID
+      description: 対応するURS等の要求IDを列挙してください。
+      placeholder: |
+        - URS-...
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_scope
+    attributes:
+      label: 対象業務
+      description: 対象となる業務プロセス、部門、役割を記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_doctypes
+    attributes:
+      label: 対象DocType
+      description: 対象DocTypeを列挙してください。該当しない場合は理由とともにN/Aと記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: fit_gap
+    attributes:
+      label: ERPNext標準Fit/Gap
+      description: ERPNext/Frappe標準で満たせる範囲と不足する範囲を記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: custom_scope
+    attributes:
+      label: カスタム実装範囲
+      description: Seiyaku ERP側で所有する設定、Custom Field、Workflow、アプリコード等を記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: 成果物
+      description: 実装、設定、文書、レビュー記録等の成果物を列挙してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 受入条件
+      description: 判定可能な受入条件を記載してください。未承認の場合はその状態を明記してください。
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_type
+    attributes:
+      label: テスト種別
+      description: Section 12のFUNC、NEG、AUTH、AUDITと、適用する単体、結合、OQ、UAT/PQ等を記載してください。
+      placeholder: FUNC / NEG / AUTH / AUDIT、単体 / 結合 / OQ / UAT/PQ
+    validations:
+      required: true
+
+  - type: dropdown
+    id: csv_impact
+    attributes:
+      label: CSV影響
+      description: WP frontmatterのcsv_impactと同じ値を選択してください。
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依存関係
+      description: 前提WP、関連Issue、後続WP、外部依存を記載してください。ない場合は「なし」と記載してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: 非対象範囲
+      description: このWPでは実施しない事項を明記してください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition_of_done
+    attributes:
+      label: Definition of Done
+      description: 共通Close条件にWP固有DoDを追加してください。
+      value: |
+        - [ ] 実装/文書/設定が格納されている
+        - [ ] レビューが完了している
+        - [ ] テスト証跡が保存されている
+        - [ ] RTMが更新されている
+        - [ ] High指摘が残っていない
+        - [ ] WP固有DoD:
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_case_ids
+    attributes:
+      label: Test Case ID
+      description: 正本のTest Case IDを列挙してください。
+      placeholder: |
+        - TC-P0-...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_ids
+    attributes:
+      label: Evidence ID
+      description: 予定するEVID-*形式のEvidence IDを列挙してください。旧EV-*は使用しません。
+      placeholder: |
+        - EVID-P0-...
+    validations:
+      required: true
+
+  - type: textarea
+    id: rtm_targets
+    attributes:
+      label: RTM更新対象
+      description: 更新するRTM項目または登録予定箇所を記載してください。
+    validations:
+      required: true
