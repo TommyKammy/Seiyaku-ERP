@@ -28,7 +28,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          for required_file in README.md LICENSE .gitignore; do
+          for required_file in \
+            README.md \
+            LICENSE \
+            .gitignore \
+            .github/ISSUE_TEMPLATE/work-package.yml \
+            .github/ISSUE_TEMPLATE/config.yml; do
             if [[ ! -s "${required_file}" ]]; then
               echo "::error file=${required_file}::Required file is missing or empty."
               exit 1
@@ -44,3 +49,109 @@ jobs:
 
           empty_tree="$(git hash-object -t tree /dev/null)"
           git diff --check "${empty_tree}" HEAD
+
+      - name: Validate issue templates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          validator_env="${RUNNER_TEMP}/check-jsonschema"
+          python3 -m venv "${validator_env}"
+          "${validator_env}/bin/pip" install \
+            --disable-pip-version-check \
+            --no-input \
+            check-jsonschema==0.37.4
+
+          "${validator_env}/bin/check-jsonschema" \
+            --builtin-schema vendor.github-issue-forms \
+            .github/ISSUE_TEMPLATE/work-package.yml
+          "${validator_env}/bin/check-jsonschema" \
+            --builtin-schema vendor.github-issue-config \
+            .github/ISSUE_TEMPLATE/config.yml
+
+          "${validator_env}/bin/python" <<'PYTHON'
+          import sys
+
+          from ruamel.yaml import YAML
+
+
+          def require(condition, message):
+              if not condition:
+                  print(f"::error::{message}", file=sys.stderr)
+                  raise SystemExit(1)
+
+
+          yaml = YAML(typ="safe")
+          with open(".github/ISSUE_TEMPLATE/work-package.yml", encoding="utf-8") as stream:
+              form = yaml.load(stream)
+          with open(".github/ISSUE_TEMPLATE/config.yml", encoding="utf-8") as stream:
+              config = yaml.load(stream)
+
+          expected = [
+              ("wp_id", "input", "Work Package ID"),
+              ("vault_status", "input", "Vault正本ステータス"),
+              ("readiness", "dropdown", "実行準備状態"),
+              ("reviewers", "input", "レビュー担当者"),
+              ("blockers", "textarea", "現在のブロッカー"),
+              ("purpose", "textarea", "目的"),
+              ("requirement_ids", "textarea", "要求ID"),
+              ("business_scope", "textarea", "対象業務"),
+              ("target_doctypes", "textarea", "対象DocType"),
+              ("fit_gap", "textarea", "ERPNext標準Fit/Gap"),
+              ("custom_scope", "textarea", "カスタム実装範囲"),
+              ("deliverables", "textarea", "成果物"),
+              ("acceptance_criteria", "textarea", "受入条件"),
+              ("test_type", "textarea", "テスト種別"),
+              ("csv_impact", "dropdown", "CSV影響"),
+              ("dependencies", "textarea", "依存関係"),
+              ("out_of_scope", "textarea", "非対象範囲"),
+              ("definition_of_done", "textarea", "Definition of Done"),
+              ("test_case_ids", "textarea", "Test Case ID"),
+              ("evidence_ids", "textarea", "Evidence ID"),
+              ("rtm_targets", "textarea", "RTM更新対象"),
+          ]
+
+          require(
+              set(form) == {"name", "description", "body"},
+              "Work Package form has unexpected top-level metadata",
+          )
+          require(
+              config == {"blank_issues_enabled": False},
+              "Issue chooser must only disable blank issues",
+          )
+
+          fields = [item for item in form["body"] if "id" in item]
+          actual = [
+              (field["id"], field["type"], field["attributes"]["label"])
+              for field in fields
+          ]
+          require(actual == expected, "Work Package field contract or order changed")
+          require(
+              len({field["id"] for field in fields}) == len(fields),
+              "Work Package field IDs must be unique",
+          )
+          require(
+              len({field["attributes"]["label"] for field in fields}) == len(fields),
+              "Work Package field labels must be unique",
+          )
+          require(
+              all(field.get("validations", {}).get("required") is True for field in fields),
+              "Every Work Package field must remain required",
+          )
+
+          by_id = {field["id"]: field for field in fields}
+          readiness = by_id["readiness"]["attributes"]
+          csv_impact = by_id["csv_impact"]["attributes"]
+          require(
+              readiness["options"] == ["blocked", "ready"]
+              and "default" not in readiness,
+              "Readiness must require an explicit blocked/ready selection",
+          )
+          require(
+              csv_impact["options"] == ["High", "Medium", "Low"]
+              and "default" not in csv_impact,
+              "CSV impact must require an explicit canonical selection",
+          )
+
+          print(f"Validated {len(fields)} required Work Package fields.")
+          PYTHON
