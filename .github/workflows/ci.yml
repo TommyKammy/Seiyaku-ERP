@@ -230,3 +230,12 @@ jobs:
             --start-directory tests \
             --pattern 'test_wp_p0_gov_002.py' \
             --verbose
+
+      - name: Validate WP-P0-GOV-003 document contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover \
+            --start-directory tests \
+            --pattern 'test_wp_p0_gov_003.py' \
+            --verbose
