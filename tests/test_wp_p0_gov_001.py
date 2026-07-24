@@ -49,10 +49,30 @@ RTM_ROW_IDS = {
     "RTM-P0-GOV-001-03",
     "RTM-P0-GOV-001-04",
 }
+RTM_TEST_CASE_IDS = {
+    "RTM-P0-GOV-001-01": "TC-P0-GOV-001-01-FUNC",
+    "RTM-P0-GOV-001-02": "TC-P0-GOV-001-02-NEG",
+    "RTM-P0-GOV-001-03": "TC-P0-GOV-001-03-AUTH",
+    "RTM-P0-GOV-001-04": "TC-P0-GOV-001-04-AUDIT",
+}
+REVIEWER_STATES = {
+    "Business Owner": ("TBD", "not_requested"),
+    "QA Reviewer": ("TBD", "not_requested"),
+    "CSV Reviewer": ("TBD", "not_requested"),
+    "IT Owner": ("TBD", "not_requested"),
+}
+FRONTMATTER_REVIEWERS = {
+    "business_owner": "TBD",
+    "qa_reviewer": "TBD",
+    "csv_reviewer": "TBD",
+    "it_owner": "TBD",
+}
 
 REQUIREMENT_PATTERN = r"\bURS-GOV-\d{3}\b"
-DESIGN_PATTERN = r"\bDS-P0-GOV-001-(?:FS|DS)\b"
-TEST_CASE_PATTERN = r"\bTC-P0-GOV-001-\d{2}-(?:FUNC|NEG|AUTH|AUDIT)\b"
+DESIGN_PATTERN = r"\bDS-P0-GOV-001-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
+TEST_CASE_PATTERN = (
+    r"\bTC-P0-GOV-001-\d{2}-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
+)
 EVIDENCE_PATTERN = (
     r"\bEVID-P0-GOV-001-\d{2}-"
     r"[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
@@ -83,14 +103,43 @@ def parse_unique_frontmatter_values(text: str) -> dict[str, str]:
     return values
 
 
+def parse_unique_frontmatter_mapping(text: str, parent_key: str) -> dict[str, str]:
+    lines = extract_frontmatter(text).splitlines()
+    parent = f"{parent_key}:"
+    if lines.count(parent) != 1:
+        raise AssertionError(f"frontmatter key must occur exactly once: {parent_key}")
+
+    values: dict[str, str] = {}
+    parent_index = lines.index(parent)
+    for line in lines[parent_index + 1 :]:
+        if not line or not line[0].isspace():
+            break
+        key, separator, value = line.strip().partition(":")
+        if not separator:
+            raise AssertionError(f"invalid nested frontmatter value: {line}")
+        if key in values:
+            raise AssertionError(f"duplicate nested frontmatter key: {key}")
+        values[key] = value.strip()
+    return values
+
+
 def extract_section(text: str, heading: str) -> str:
+    if text.splitlines().count(heading) != 1:
+        raise AssertionError(f"section heading must occur exactly once: {heading}")
     marker = f"{heading}\n"
     start = text.find(marker)
     if start == -1:
         raise AssertionError(f"missing section: {heading}")
     content_start = start + len(marker)
-    next_heading = text.find("\n## ", content_start)
-    return text[content_start:] if next_heading == -1 else text[content_start:next_heading]
+    heading_level = len(heading) - len(heading.lstrip("#"))
+    if heading_level == 0 or not heading.startswith(f"{'#' * heading_level} "):
+        raise AssertionError(f"invalid Markdown heading: {heading}")
+    next_heading = re.search(
+        rf"(?m)^#{{1,{heading_level}}} ", text[content_start:]
+    )
+    if next_heading is None:
+        return text[content_start:]
+    return text[content_start : content_start + next_heading.start()]
 
 
 def parse_unique_two_column_table(section: str) -> dict[str, str]:
@@ -186,6 +235,21 @@ class WP001DocumentContractTest(unittest.TestCase):
         self.assertIn("Approval Evidence", header)
         self.assertEqual(rows, [])
 
+    def test_required_reviewers_remain_unassigned(self) -> None:
+        self.assertEqual(
+            parse_unique_frontmatter_mapping(self.design, "reviewers"),
+            FRONTMATTER_REVIEWERS,
+        )
+        for document in (self.design, self.plan):
+            reviewer_section = extract_section(document, "### Required reviewers")
+            _, reviewer_rows = parse_markdown_table(reviewer_section)
+            self.assertEqual(len(reviewer_rows), len(REVIEWER_STATES))
+            actual_reviewer_states = {
+                row["Role"]: (row["Assigned reviewer"], row["Review status"])
+                for row in reviewer_rows
+            }
+            self.assertEqual(actual_reviewer_states, REVIEWER_STATES)
+
     def test_plan_remains_non_executable_and_unapproved(self) -> None:
         document_control = extract_section(self.plan, "## 1. Document control")
         document_control_values = parse_unique_two_column_table(document_control)
@@ -226,17 +290,31 @@ class WP001DocumentContractTest(unittest.TestCase):
             Counter(re.findall(EVIDENCE_PATTERN, manifest)),
             Counter({identifier: 1 for identifier in EVIDENCE_IDS}),
         )
-        self.assertEqual(manifest.count("| not_created |"), len(EVIDENCE_IDS))
+        _, manifest_rows = parse_markdown_table(manifest)
+        self.assertEqual(len(manifest_rows), len(EVIDENCE_IDS))
+        actual_evidence_states = {
+            row["Planned Evidence ID"]: row["Status"] for row in manifest_rows
+        }
+        expected_evidence_states = {
+            identifier: "not_created" for identifier in EVIDENCE_IDS
+        }
+        self.assertEqual(actual_evidence_states, expected_evidence_states)
 
         traceability = extract_section(self.plan, "## 12. Planned traceability")
         _, traceability_rows = parse_markdown_table(traceability)
         expected_traceability_states = {
-            identifier: ("not_executed", "not_requested", "not_updated")
+            identifier: (
+                RTM_TEST_CASE_IDS[identifier],
+                "not_executed",
+                "not_requested",
+                "not_updated",
+            )
             for identifier in RTM_ROW_IDS
         }
         self.assertEqual(len(traceability_rows), len(RTM_ROW_IDS))
         actual_traceability_states = {
             row["RTM row"]: (
+                row["Test Case"],
                 row["Execution"],
                 row["Evidence review"],
                 row["RTM update"],
