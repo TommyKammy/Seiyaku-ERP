@@ -86,6 +86,56 @@ DECISION_TABLES = {
         ("Fit/Gap conclusion", "Design reference"),
     ),
 }
+DECISION_ROW_IDENTITIES = {
+    "## 9. Environment and configuration boundary": (
+        "Decision area",
+        {
+            "Environment classes",
+            "Instance identity",
+            "Version baseline",
+            "Configuration scope",
+            "Promotion",
+            "Drift detection",
+            "Backup and restore",
+            "Monitoring",
+        },
+    ),
+    "## 10. Fit/Gap decision inputs": (
+        "Candidate area",
+        {
+            "System Inventory",
+            "GxP Scope Matrix",
+            "RACI",
+            "Role Permission",
+            "Workflow",
+            "Custom Field",
+            "Notification",
+            "Data Import",
+            "Report",
+            "Audit and reason for change",
+            "Electronic signature",
+        },
+    ),
+}
+OPEN_DECISIONS = {
+    "Approve full URS-GOV-001 and URS-GOV-002 requirement text",
+    "Approve WP acceptance criteria and applicable test levels",
+    "Assign named reviewers",
+    "Approve inventory purpose, granularity, and record schema",
+    "Approve system and component inventory baseline",
+    (
+        "Approve functional, application, data, integration, infrastructure, "
+        "trust, organizational, lifecycle, geographic, and temporal boundaries"
+    ),
+    "Reconcile intended-use and GxP scope with Issue #3",
+    "Reconcile accountability and ownership with Issue #4",
+    (
+        "Approve interface, dependency, and authoritative-data-source "
+        "registers"
+    ),
+    "Approve Fit/Gap conclusions and implementation scope",
+    "Approve FS/DS baseline",
+}
 TARGET_OBJECTS = {
     "System Inventory",
     "GxP Scope Matrix",
@@ -127,6 +177,10 @@ RTM_ROW_PATTERN = (
     r"(?![A-Za-z0-9_-])"
 )
 
+REVIEWED_DOCUMENT_SHA256 = {
+    "design": "e823a0a72a75223f3fa9cd28c8ef80d1cbb04d58c8a4e5abfcda8202074f019f",
+    "plan": "e7d913a3168d66b5fafba386c302fc266748e0ffcfc593522c1fc52998e6a0b0",
+}
 PROCEDURE_SECTION_SHA256 = {
     "### TC-P0-GOV-003-01-FUNC — prospective normal-flow verification": (
         "6993722cc55dcff1ac5a4bea4c9852f636f64da7a31a5bd617371db127b847a7"
@@ -209,6 +263,19 @@ class WP003DocumentContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.design = DESIGN_PATH.read_text(encoding="utf-8")
         cls.plan = PLAN_PATH.read_text(encoding="utf-8")
+
+    def test_documents_match_reviewed_unapproved_content(self) -> None:
+        # These digests force any assertion-bearing prose change through review,
+        # including approval claims outside the explicitly parsed sections.
+        documents = {"design": self.design, "plan": self.plan}
+        for document_name, expected_digest in REVIEWED_DOCUMENT_SHA256.items():
+            with self.subTest(document=document_name):
+                self.assertEqual(
+                    hashlib.sha256(
+                        documents[document_name].encode("utf-8")
+                    ).hexdigest(),
+                    expected_digest,
+                )
 
     def assert_identifier_sets(self, text: str) -> None:
         self.assertSetEqual(
@@ -332,6 +399,14 @@ class WP003DocumentContractTest(unittest.TestCase):
                     extract_section(self.design, heading)
                 )
                 self.assertEqual(len(rows), expected_count)
+                if heading in DECISION_ROW_IDENTITIES:
+                    identity_field, expected_identities = (
+                        DECISION_ROW_IDENTITIES[heading]
+                    )
+                    self.assertSetEqual(
+                        {row[identity_field] for row in rows},
+                        expected_identities,
+                    )
                 for row in rows:
                     for field in placeholder_fields:
                         self.assertEqual(row[field], "TBD")
@@ -344,6 +419,10 @@ class WP003DocumentContractTest(unittest.TestCase):
         self.assertEqual(
             Counter(row["Status"] for row in decision_rows),
             Counter({"TBD": 11}),
+        )
+        self.assertSetEqual(
+            {row["Decision"] for row in decision_rows},
+            OPEN_DECISIONS,
         )
         self.assert_identifier_sets(self.design)
 
