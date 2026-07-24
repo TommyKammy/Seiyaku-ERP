@@ -55,6 +55,24 @@ RTM_TEST_CASE_IDS = {
     "RTM-P0-GOV-001-03": "TC-P0-GOV-001-03-AUTH",
     "RTM-P0-GOV-001-04": "TC-P0-GOV-001-04-AUDIT",
 }
+EVIDENCE_TEST_CASE_IDS = {
+    "EVID-P0-GOV-001-01-SCREEN": "TC-P0-GOV-001-01-FUNC",
+    "EVID-P0-GOV-001-01-DATA": "TC-P0-GOV-001-01-FUNC",
+    "EVID-P0-GOV-001-01-LOG": "TC-P0-GOV-001-01-FUNC",
+    "EVID-P0-GOV-001-01-RTM": "TC-P0-GOV-001-01-FUNC",
+    "EVID-P0-GOV-001-02-SCREEN": "TC-P0-GOV-001-02-NEG",
+    "EVID-P0-GOV-001-02-DATA": "TC-P0-GOV-001-02-NEG",
+    "EVID-P0-GOV-001-02-LOG": "TC-P0-GOV-001-02-NEG",
+    "EVID-P0-GOV-001-02-RTM": "TC-P0-GOV-001-02-NEG",
+    "EVID-P0-GOV-001-03-SCREEN": "TC-P0-GOV-001-03-AUTH",
+    "EVID-P0-GOV-001-03-AUTH": "TC-P0-GOV-001-03-AUTH",
+    "EVID-P0-GOV-001-03-AUDIT": "TC-P0-GOV-001-03-AUTH",
+    "EVID-P0-GOV-001-03-RTM": "TC-P0-GOV-001-03-AUTH",
+    "EVID-P0-GOV-001-04-AUDIT": "TC-P0-GOV-001-04-AUDIT",
+    "EVID-P0-GOV-001-04-ESIG": "TC-P0-GOV-001-04-AUDIT",
+    "EVID-P0-GOV-001-04-APPROVAL": "TC-P0-GOV-001-04-AUDIT",
+    "EVID-P0-GOV-001-04-RTM": "TC-P0-GOV-001-04-AUDIT",
+}
 REVIEWER_STATES = {
     "Business Owner": ("TBD", "not_requested"),
     "QA Reviewer": ("TBD", "not_requested"),
@@ -68,7 +86,9 @@ FRONTMATTER_REVIEWERS = {
     "it_owner": "TBD",
 }
 
-REQUIREMENT_PATTERN = r"\bURS-GOV-\d{3}\b"
+REQUIREMENT_PATTERN = (
+    r"\bURS-GOV-\d{3}(?:[-_][A-Za-z0-9]+)*\b"
+)
 DESIGN_PATTERN = r"\bDS-P0-GOV-001-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
 TEST_CASE_PATTERN = (
     r"\bTC-P0-GOV-001-\d{2}-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
@@ -77,7 +97,9 @@ EVIDENCE_PATTERN = (
     r"\bEVID-P0-GOV-001-\d{2}-"
     r"[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
 )
-RTM_ROW_PATTERN = r"\bRTM-P0-GOV-001-\d{2}\b"
+RTM_ROW_PATTERN = (
+    r"\bRTM-P0-GOV-001-\d{2}(?:[-_][A-Za-z0-9]+)*\b"
+)
 
 
 def extract_frontmatter(text: str) -> str:
@@ -204,6 +226,19 @@ class WP001DocumentContractTest(unittest.TestCase):
         }
         for key, expected_value in expected_frontmatter.items():
             self.assertEqual(frontmatter.get(key), expected_value)
+
+        document_control = extract_section(self.design, "## 1. Document control")
+        document_control_values = parse_unique_two_column_table(document_control)
+        expected_document_control = {
+            "Vault status": "draft",
+            "Operational readiness": "blocked",
+            "Approval status": "not_requested",
+            "Intended-use decision": "undecided",
+            "GxP-scope decision": "undecided",
+        }
+        for key, expected_value in expected_document_control.items():
+            self.assertEqual(document_control_values.get(key), expected_value)
+
         self.assertIn(
             "The Work Package and Issue must remain draft/blocked and must not be closed by\n"
             "this document-only change.",
@@ -284,6 +319,16 @@ class WP001DocumentContractTest(unittest.TestCase):
             Counter(re.findall(TEST_CASE_PATTERN, inventory)),
             Counter({identifier: 1 for identifier in TEST_CASE_IDS}),
         )
+        _, inventory_rows = parse_markdown_table(inventory)
+        self.assertEqual(len(inventory_rows), len(TEST_CASE_IDS))
+        actual_execution_states = {
+            row["Planned Test Case ID"]: row["Execution status"]
+            for row in inventory_rows
+        }
+        expected_execution_states = {
+            identifier: "not_executable" for identifier in TEST_CASE_IDS
+        }
+        self.assertEqual(actual_execution_states, expected_execution_states)
 
         manifest = extract_section(self.plan, "## 11. Evidence manifest schema")
         self.assertEqual(
@@ -293,10 +338,12 @@ class WP001DocumentContractTest(unittest.TestCase):
         _, manifest_rows = parse_markdown_table(manifest)
         self.assertEqual(len(manifest_rows), len(EVIDENCE_IDS))
         actual_evidence_states = {
-            row["Planned Evidence ID"]: row["Status"] for row in manifest_rows
+            row["Planned Evidence ID"]: (row["Test Case ID"], row["Status"])
+            for row in manifest_rows
         }
         expected_evidence_states = {
-            identifier: "not_created" for identifier in EVIDENCE_IDS
+            identifier: (EVIDENCE_TEST_CASE_IDS[identifier], "not_created")
+            for identifier in EVIDENCE_IDS
         }
         self.assertEqual(actual_evidence_states, expected_evidence_states)
 
