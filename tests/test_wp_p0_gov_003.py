@@ -7,6 +7,7 @@ protocol, create Evidence, update the RTM, or approve the Work Package.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unittest
 from collections import Counter
@@ -16,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN_PATH = ROOT / "validation_docs/design/WP-P0-GOV-003_FS_DS.md"
 PLAN_PATH = ROOT / "validation_docs/test/TC-P0-GOV-003_PLAN.md"
+EVIDENCE_PATH = ROOT / "validation_docs/evidence/WP-P0-GOV-003"
 
 REQUIREMENT_IDS = {"URS-GOV-001", "URS-GOV-002"}
 DESIGN_IDS = {"DS-P0-GOV-003-FS", "DS-P0-GOV-003-DS"}
@@ -104,14 +106,43 @@ DISCOVERY_CATEGORIES = {
     "Operational tooling",
 }
 
-REQUIREMENT_PATTERN = r"\bURS-GOV-\d{3}\b"
-DESIGN_PATTERN = r"\bDS-P0-GOV-\d{3}-(?:FS|DS)\b"
-TEST_CASE_PATTERN = r"\bTC-P0-GOV-\d{3}-\d{2}-(?:FUNC|NEG|AUTH|AUDIT)\b"
-EVIDENCE_PATTERN = (
-    r"\bEVID-P0-GOV-\d{3}-\d{2}-"
-    r"(?:SCREEN|DATA|LOG|RTM|AUTH|AUDIT|ESIG|APPROVAL)\b"
+REQUIREMENT_PATTERN = (
+    r"(?<![A-Za-z0-9_-])URS-GOV-\d{3}(?![A-Za-z0-9_-])"
 )
-RTM_ROW_PATTERN = r"\bRTM-P0-GOV-\d{3}-\d{2}\b"
+DESIGN_PATTERN = (
+    r"(?<![A-Za-z0-9_-])DS-P0-GOV-\d{3}-(?:FS|DS)"
+    r"(?![A-Za-z0-9_-])"
+)
+TEST_CASE_PATTERN = (
+    r"(?<![A-Za-z0-9_-])TC-P0-GOV-\d{3}-\d{2}-"
+    r"(?:FUNC|NEG|AUTH|AUDIT)(?![A-Za-z0-9_-])"
+)
+EVIDENCE_PATTERN = (
+    r"(?<![A-Za-z0-9_-])EVID-P0-GOV-\d{3}-\d{2}-"
+    r"(?:SCREEN|DATA|LOG|RTM|AUTH|AUDIT|ESIG|APPROVAL)"
+    r"(?![A-Za-z0-9_-])"
+)
+RTM_ROW_PATTERN = (
+    r"(?<![A-Za-z0-9_-])RTM-P0-GOV-\d{3}-\d{2}"
+    r"(?![A-Za-z0-9_-])"
+)
+
+PROCEDURE_SECTION_SHA256 = {
+    "### TC-P0-GOV-003-01-FUNC — prospective normal-flow verification": (
+        "6993722cc55dcff1ac5a4bea4c9852f636f64da7a31a5bd617371db127b847a7"
+    ),
+    "### TC-P0-GOV-003-02-NEG — prospective negative and consistency "
+    "verification": (
+        "0d222d8399a72ebaf2d4aa24b6a45a3bfcbd78402e4d0f8676200b163844c1c4"
+    ),
+    "### TC-P0-GOV-003-03-AUTH — prospective authorization-boundary "
+    "verification": (
+        "e49a6c19e7c72775cde15e9e408379d6f219094463ffd8decb4262488fca4acc"
+    ),
+    "### TC-P0-GOV-003-04-AUDIT — prospective change and audit verification": (
+        "9365a2ab82ef18a1a253f7ddb39ac58c39601bbf30159479af3f2c53915922b8"
+    ),
+}
 
 
 def extract_section(text: str, heading: str) -> str:
@@ -193,6 +224,25 @@ class WP003DocumentContractTest(unittest.TestCase):
         self.assertSetEqual(
             set(re.findall(RTM_ROW_PATTERN, text)), RTM_ROW_IDS
         )
+        all_identifiers = (
+            REQUIREMENT_IDS
+            | DESIGN_IDS
+            | TEST_CASE_IDS
+            | EVIDENCE_IDS
+            | RTM_ROW_IDS
+        )
+        for identifier in sorted(all_identifiers):
+            with self.subTest(extended_identifier=identifier):
+                identifier_token_pattern = (
+                    rf"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]*"
+                    rf"{re.escape(identifier)}[A-Za-z0-9_-]*"
+                    rf"(?![A-Za-z0-9_-])"
+                )
+                self.assertSetEqual(
+                    set(re.findall(identifier_token_pattern, text)),
+                    {identifier},
+                    f"non-canonical token derived from {identifier}",
+                )
 
     def test_design_remains_a_blocked_unapproved_partial_deliverable(self) -> None:
         control = parse_two_column_table(
@@ -396,24 +446,22 @@ class WP003DocumentContractTest(unittest.TestCase):
         )
 
     def test_plan_procedure_models_do_not_claim_approved_results(self) -> None:
-        procedure_headings = (
-            "### TC-P0-GOV-003-01-FUNC — prospective normal-flow verification",
-            "### TC-P0-GOV-003-02-NEG — prospective negative and "
-            "consistency verification",
-            "### TC-P0-GOV-003-03-AUTH — prospective "
-            "authorization-boundary verification",
-            "### TC-P0-GOV-003-04-AUDIT — prospective change and audit verification",
-        )
-        for heading in procedure_headings:
+        # Any procedure-text change must update this reviewed content digest,
+        # preventing a later approved-result claim from bypassing broad wording.
+        for heading, expected_digest in PROCEDURE_SECTION_SHA256.items():
             with self.subTest(heading=heading):
                 section = extract_section(self.plan, heading)
-                self.assertRegex(
-                    section,
-                    r"(?i)(later-approved|approved versions|remain TBD|placeholder)",
+                self.assertEqual(
+                    hashlib.sha256(section.encode("utf-8")).hexdigest(),
+                    expected_digest,
                 )
 
         _, authorization_rows = parse_markdown_table(
-            extract_section(self.plan, procedure_headings[2])
+            extract_section(
+                self.plan,
+                "### TC-P0-GOV-003-03-AUTH — prospective "
+                "authorization-boundary verification",
+            )
         )
         self.assertEqual(len(authorization_rows), 8)
         for row in authorization_rows:
@@ -425,6 +473,11 @@ class WP003DocumentContractTest(unittest.TestCase):
                 self.assertIn(row[field], {"TBD", "N/A / TBD"})
 
     def test_plan_evidence_and_traceability_are_uncreated(self) -> None:
+        self.assertFalse(
+            EVIDENCE_PATH.exists(),
+            f"Evidence must remain uncreated: {EVIDENCE_PATH}",
+        )
+
         manifest = extract_section(self.plan, "## 8. Evidence manifest")
         _, manifest_rows = parse_markdown_table(manifest)
         self.assertEqual(len(manifest_rows), len(EVIDENCE_IDS))
