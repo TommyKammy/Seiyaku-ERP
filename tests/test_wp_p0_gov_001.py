@@ -55,7 +55,7 @@ DESIGN_PATTERN = r"\bDS-P0-GOV-001-(?:FS|DS)\b"
 TEST_CASE_PATTERN = r"\bTC-P0-GOV-001-\d{2}-(?:FUNC|NEG|AUTH|AUDIT)\b"
 EVIDENCE_PATTERN = (
     r"\bEVID-P0-GOV-001-\d{2}-"
-    r"(?:SCREEN|DATA|LOG|RTM|AUTH|AUDIT|ESIG|APPROVAL)\b"
+    r"[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\b"
 )
 RTM_ROW_PATTERN = r"\bRTM-P0-GOV-001-\d{2}\b"
 
@@ -108,6 +108,34 @@ def parse_unique_two_column_table(section: str) -> dict[str, str]:
     return values
 
 
+def parse_markdown_table(section: str) -> tuple[list[str], list[dict[str, str]]]:
+    table_lines = [
+        line.strip() for line in section.splitlines() if line.strip().startswith("|")
+    ]
+    if len(table_lines) < 2:
+        raise AssertionError("section must contain a Markdown table")
+
+    def cells(line: str) -> list[str]:
+        return [cell.strip() for cell in line.strip("|").split("|")]
+
+    header = cells(table_lines[0])
+    separator = cells(table_lines[1])
+    if len(header) != len(separator) or not all(
+        re.fullmatch(r":?-{3,}:?", cell) for cell in separator
+    ):
+        raise AssertionError("invalid Markdown table header")
+    if len(set(header)) != len(header):
+        raise AssertionError("duplicate Markdown table header")
+
+    rows: list[dict[str, str]] = []
+    for line in table_lines[2:]:
+        row = cells(line)
+        if len(row) != len(header):
+            raise AssertionError("Markdown table row has an unexpected column count")
+        rows.append(dict(zip(header, row, strict=True)))
+    return header, rows
+
+
 class WP001DocumentContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -148,6 +176,15 @@ class WP001DocumentContractTest(unittest.TestCase):
         self.assertSetEqual(
             set(re.findall(RTM_ROW_PATTERN, self.design)), RTM_ROW_IDS
         )
+
+    def test_design_scope_matrix_has_no_classified_rows(self) -> None:
+        scope_matrix = extract_section(
+            self.design, "## 4. GxP Scope Matrix schema"
+        )
+        header, rows = parse_markdown_table(scope_matrix)
+        self.assertIn("Scope decision", header)
+        self.assertIn("Approval Evidence", header)
+        self.assertEqual(rows, [])
 
     def test_plan_remains_non_executable_and_unapproved(self) -> None:
         document_control = extract_section(self.plan, "## 1. Document control")
@@ -192,11 +229,24 @@ class WP001DocumentContractTest(unittest.TestCase):
         self.assertEqual(manifest.count("| not_created |"), len(EVIDENCE_IDS))
 
         traceability = extract_section(self.plan, "## 12. Planned traceability")
+        _, traceability_rows = parse_markdown_table(traceability)
+        expected_traceability_states = {
+            identifier: ("not_executed", "not_requested", "not_updated")
+            for identifier in RTM_ROW_IDS
+        }
+        self.assertEqual(len(traceability_rows), len(RTM_ROW_IDS))
+        actual_traceability_states = {
+            row["RTM row"]: (
+                row["Execution"],
+                row["Evidence review"],
+                row["RTM update"],
+            )
+            for row in traceability_rows
+        }
         self.assertEqual(
-            Counter(re.findall(RTM_ROW_PATTERN, traceability)),
-            Counter({identifier: 1 for identifier in RTM_ROW_IDS}),
+            actual_traceability_states,
+            expected_traceability_states,
         )
-        self.assertEqual(traceability.count("| not_updated |"), len(RTM_ROW_IDS))
 
     def test_plan_full_identifier_sets_match_the_design_contract(self) -> None:
         self.assertSetEqual(
