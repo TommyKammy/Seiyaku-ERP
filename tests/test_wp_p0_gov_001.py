@@ -85,6 +85,13 @@ FRONTMATTER_REVIEWERS = {
     "csv_reviewer": "TBD",
     "it_owner": "TBD",
 }
+INTENDED_USE_DECISION_INPUT_COUNT = 12
+PROCEDURE_SECTION_ROW_COUNTS = {
+    "## 7. TC-P0-GOV-001-01-FUNC planning schema": 13,
+    "## 8. TC-P0-GOV-001-02-NEG planning schema": 13,
+    "## 9. TC-P0-GOV-001-03-AUTH planning schema": 13,
+    "## 10. TC-P0-GOV-001-04-AUDIT planning schema": 15,
+}
 
 REQUIREMENT_PATTERN = (
     r"\bURS-GOV-\d{3}(?:[-_][A-Za-z0-9]+)*\b"
@@ -239,6 +246,28 @@ class WP001DocumentContractTest(unittest.TestCase):
         for key, expected_value in expected_document_control.items():
             self.assertEqual(document_control_values.get(key), expected_value)
 
+        decision_inputs = extract_section(
+            self.design, "## 3. Intended-use decision inputs"
+        )
+        decision_header, decision_rows = parse_markdown_table(decision_inputs)
+        self.assertEqual(
+            decision_header,
+            ["Decision input", "Response", "Decision owner", "Review status"],
+        )
+        self.assertEqual(len(decision_rows), INTENDED_USE_DECISION_INPUT_COUNT)
+        self.assertEqual(
+            len({row["Decision input"] for row in decision_rows}),
+            INTENDED_USE_DECISION_INPUT_COUNT,
+        )
+        self.assertEqual(
+            Counter(
+                (row["Response"], row["Review status"]) for row in decision_rows
+            ),
+            Counter(
+                {("TBD", "not_requested"): INTENDED_USE_DECISION_INPUT_COUNT}
+            ),
+        )
+
         self.assertIn(
             "The Work Package and Issue must remain draft/blocked and must not be closed by\n"
             "this document-only change.",
@@ -310,6 +339,27 @@ class WP001DocumentContractTest(unittest.TestCase):
             "Business, or IT approval.",
             self.plan,
         )
+
+    def test_plan_procedure_schemas_remain_unapproved(self) -> None:
+        for heading, expected_row_count in PROCEDURE_SECTION_ROW_COUNTS.items():
+            with self.subTest(heading=heading):
+                procedure = extract_section(self.plan, heading)
+                header, rows = parse_markdown_table(procedure)
+                self.assertEqual(
+                    header,
+                    ["Procedure field", "Planned content", "Status"],
+                )
+                self.assertEqual(len(rows), expected_row_count)
+                self.assertEqual(
+                    len({row["Procedure field"] for row in rows}),
+                    expected_row_count,
+                )
+                self.assertEqual(
+                    Counter(
+                        (row["Planned content"], row["Status"]) for row in rows
+                    ),
+                    Counter({("TBD", "not_requested"): expected_row_count}),
+                )
 
     def test_plan_canonical_inventory_has_one_entry_per_identifier(self) -> None:
         inventory = extract_section(
