@@ -212,3 +212,12 @@ jobs:
           print(f"Validated {len(fields)} required Work Package fields.")
           print(f"Validated {len(required_pr_lines)} pull request lines.")
           PYTHON
+
+      - name: Validate WP-P0-GOV-001 document contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover \
+            --start-directory tests \
+            --pattern 'test_wp_p0_gov_001.py' \
+            --verbose
