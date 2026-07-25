@@ -7,6 +7,7 @@ or approve any Work Package decision.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unittest
 from collections import Counter
@@ -16,6 +17,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN_PATH = ROOT / "validation_docs/design/WP-P0-GOV-001_FS_DS.md"
 PLAN_PATH = ROOT / "validation_docs/test/TC-P0-GOV-001_PLAN.md"
+
+REVIEWED_DOCUMENT_SHA256 = {
+    "design": "acb91314e2f7f16ceee200a05c414bd4bb075bcd66fd9fa4ff1c49f2ba635616",
+    "plan": "3e2d9d58ccc483f4491ed561c66c5eb7319f00f4eaad9f3cc34102e8284828e4",
+}
 
 REQUIREMENT_IDS = {"URS-GOV-001", "URS-GOV-002"}
 DESIGN_IDS = {"DS-P0-GOV-001-FS", "DS-P0-GOV-001-DS"}
@@ -219,6 +225,23 @@ class WP001DocumentContractTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.design = DESIGN_PATH.read_text(encoding="utf-8")
         cls.plan = PLAN_PATH.read_text(encoding="utf-8")
+
+    def test_documents_match_reviewed_unapproved_content(self) -> None:
+        # These digests force any assertion-bearing prose change through review,
+        # including approval claims outside the explicitly parsed sections.
+        documents = {"design": self.design, "plan": self.plan}
+        for document_name, expected_digest in REVIEWED_DOCUMENT_SHA256.items():
+            with self.subTest(document=document_name):
+                self.assertEqual(
+                    hashlib.sha256(
+                        documents[document_name].encode("utf-8")
+                    ).hexdigest(),
+                    expected_digest,
+                    (
+                        f"{document_name} content changed; review the complete "
+                        "unapproved document before updating its digest"
+                    ),
+                )
 
     def test_design_remains_an_unapproved_blocked_decision_input(self) -> None:
         frontmatter = parse_unique_frontmatter_values(self.design)
