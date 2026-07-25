@@ -275,6 +275,10 @@ class WP003DocumentContractTest(unittest.TestCase):
                         documents[document_name].encode("utf-8")
                     ).hexdigest(),
                     expected_digest,
+                    (
+                        f"{document_name} content changed; review the complete "
+                        "unapproved document before updating its digest"
+                    ),
                 )
 
     def assert_identifier_sets(self, text: str) -> None:
