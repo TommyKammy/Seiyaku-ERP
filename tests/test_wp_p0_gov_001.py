@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN_PATH = ROOT / "validation_docs/design/WP-P0-GOV-001_FS_DS.md"
 PLAN_PATH = ROOT / "validation_docs/test/TC-P0-GOV-001_PLAN.md"
+EVIDENCE_PATH = ROOT / "validation_docs/evidence/WP-P0-GOV-001"
 
 REVIEWED_DOCUMENT_SHA256 = {
     "design": "acb91314e2f7f16ceee200a05c414bd4bb075bcd66fd9fa4ff1c49f2ba635616",
@@ -383,6 +384,12 @@ class WP001DocumentContractTest(unittest.TestCase):
                     ),
                     Counter({("TBD", "not_requested"): expected_row_count}),
                 )
+
+    def test_evidence_directory_remains_uncreated(self) -> None:
+        self.assertFalse(
+            EVIDENCE_PATH.exists() or EVIDENCE_PATH.is_symlink(),
+            f"Evidence must remain uncreated: {EVIDENCE_PATH}",
+        )
 
     def test_plan_canonical_inventory_has_one_entry_per_identifier(self) -> None:
         inventory = extract_section(
